@@ -59,6 +59,7 @@ Within a slice, prefer:
 
 ## Tooling conventions
 
+- This repository is public. Never commit or push private data, secrets, credentials, or personal information.
 - No secrets in repo. Configure via env vars.
 - Prefer small, obvious solutions over frameworks.
 - Add comments only when the *why* isn't obvious.
