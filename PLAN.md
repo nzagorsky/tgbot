@@ -13,7 +13,7 @@ Build a Telegram bot that sits in a group chat, records the full message history
 
 ## Suggested baseline stack (v1)
 
-- Python 3.12+
+- Python 3.14+
 - `python-telegram-bot` (polling)
 - `httpx` (SearXNG + any external calls)
 - `pydantic-settings` (env-driven config)
@@ -21,9 +21,7 @@ Build a Telegram bot that sits in a group chat, records the full message history
 - pgvector (vector store in Postgres)
 - Embeddings: `sentence-transformers` (local) behind an interface
 - LLM: OpenRouter via OpenAI-compatible chat client (supports tool-calling)
-
-Notes:
-- If you prefer a different language (Node/Go) or a fully local LLM stack, we can revise the plan without changing the architecture principles.
+- DSPy (offline eval + prompt/program optimization)
 
 ## Slice map (vertical slices)
 
@@ -57,10 +55,7 @@ Acceptance:
 
 - Persist every message/update the bot sees (text + key metadata)
 - Idempotency (dedupe by update_id and/or (chat_id, message_id))
-- Quiet-by-default: no chatter unless `/status` or `/help`
-
-Acceptance:
-- Adding the bot to a group results in durable message history in SQLite.
+- Quiet-by-default
 
 ### Stage 2 - Chunking + indexing pipeline (offline-first)
 
@@ -81,7 +76,18 @@ Acceptance:
 Acceptance:
 - Bot answers group questions with quoted/cited context from the chat history.
 
-### Stage 4 - Tool calling + SearXNG search
+### Stage 4 - Evals + DSPy optimization
+
+- Add an eval harness for retrieval + grounded answering
+- Build a small labeled eval set from real chat history (questions, gold message ids/citations, expected abstain where applicable)
+- Track core metrics: Recall@k (retrieval), citation precision/recall (grounding), abstention quality, latency
+- Use DSPy to optimize retrieval/answer prompts against the eval set; keep compiled config/versioned artifacts
+- Add a lightweight regression run (small subset) to catch quality regressions early
+
+Acceptance:
+- Eval metrics meet initial thresholds and are reproducible across runs.
+
+### Stage 5 - Tool calling + SearXNG search
 
 - Implement a `searxng_search` tool (query, timeouts, safe defaults)
 - Tool-call loop in LLM client (bounded steps, logging)
@@ -90,7 +96,7 @@ Acceptance:
 Acceptance:
 - Bot can decide to search the web, then incorporate results into answers.
 
-### Stage 5 - Ops + admin
+### Stage 6 - Ops + admin
 
 - `/status`, `/pause_logging`, `/resume_logging`, `/export_chat`
 - Retention controls (per-chat opt-out/pause; optional redaction)
@@ -98,10 +104,3 @@ Acceptance:
 
 Acceptance:
 - Bot is operable in real groups without spamming and with clear admin controls.
-
-## Open decisions (we can lock in next)
-
-- Embedding model choice (local `sentence-transformers` vs API embeddings)
-- Vector store choice (Qdrant vs in-process)
-- Retention policy + export format
-- Reply trigger policy (commands only vs mention + commands)
