@@ -2,9 +2,9 @@
 name = "tgbot"
 version = "0.1.0"
 description = "Telegram group history bot"
-readme = "PLAN.md"
 requires-python = ">=3.12"
 dependencies = [
+    "loguru>=0.7.0,<1.0.0",
     "python-telegram-bot>=22.0,<23.0",
 ]
 

@@ -1,8 +1,26 @@
 import logging
 import os
+import sys
 
+from loguru import logger
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+
+
+class InterceptHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            level: str | int = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+
+
+def configure_logging() -> None:
+    logger.remove()
+    logger.add(sys.stderr, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss.SSS} {level} {name}: {message}")
+    logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO, force=True)
 
 
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -24,9 +42,7 @@ def build_app(token: str) -> Application:
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    configure_logging()
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
