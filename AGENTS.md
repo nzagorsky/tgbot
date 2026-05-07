@@ -1,1 +1,2 @@
 - The repo is public, make sure to not include any sensitive information
+- All code should be asynchronous
