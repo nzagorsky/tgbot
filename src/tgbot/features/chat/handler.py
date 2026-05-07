@@ -8,7 +8,7 @@ from tgbot.features.chat.responder import generate_reply
 
 
 class MessageRecorder(Protocol):
-    def record(self, message: Any, direction: str, *, matched_keyword: bool) -> None: ...
+    async def record(self, message: Any, direction: str, *, matched_keyword: bool) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -26,11 +26,11 @@ async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = message.text or message.caption or ""
     matched_keyword = deps.trigger_keyword.casefold() in text.casefold()
 
-    deps.recorder.record(message, "in", matched_keyword=matched_keyword)
+    await deps.recorder.record(message, "in", matched_keyword=matched_keyword)
 
     user = message.from_user
     if (user and user.is_bot) or not matched_keyword:
         return
 
     sent_message = await message.reply_text(await generate_reply(text))
-    deps.recorder.record(sent_message, "out", matched_keyword=True)
+    await deps.recorder.record(sent_message, "out", matched_keyword=True)

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from loguru import logger
-from opensearchpy import OpenSearch
+from opensearchpy import AsyncOpenSearch
 
 SCHEMA_VERSION = 1
 
@@ -18,22 +18,25 @@ class OpenSearchRecorder:
         verify_certs: bool = True,
     ) -> None:
         self.index = index
-        self.client = OpenSearch(
+        self.client = AsyncOpenSearch(
             hosts=[url],
             http_auth=(username or "", password or "") if username or password else None,
             verify_certs=verify_certs,
         )
 
-    def record(self, message: Any, direction: str, *, matched_keyword: bool) -> None:
+    async def record(self, message: Any, direction: str, *, matched_keyword: bool) -> None:
         document = build_message_document(message, direction, matched_keyword=matched_keyword)
         try:
-            self.client.index(
+            await self.client.index(
                 index=self.index,
                 id=f"tg:{document['chat_id']}:{document['message_id']}:{document['direction']}",
                 body=document,
             )
         except Exception:
             logger.exception("Failed to record Telegram message in OpenSearch")
+
+    async def close(self) -> None:
+        await self.client.close()
 
 
 def build_message_document(message: Any, direction: str, *, matched_keyword: bool) -> dict[str, Any]:

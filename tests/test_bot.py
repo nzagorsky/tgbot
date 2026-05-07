@@ -14,7 +14,7 @@ TRIGGER_KEYWORD = "trigger-keyword"
 
 
 class FakeRecorder:
-    def record(self, message, direction: str, *, matched_keyword: bool) -> None:
+    async def record(self, message, direction: str, *, matched_keyword: bool) -> None:
         pass
 
 
@@ -22,7 +22,7 @@ class CapturingRecorder:
     def __init__(self) -> None:
         self.records = []
 
-    def record(self, message, direction: str, *, matched_keyword: bool) -> None:
+    async def record(self, message, direction: str, *, matched_keyword: bool) -> None:
         self.records.append((message, direction, matched_keyword))
 
 
@@ -74,7 +74,7 @@ def test_opensearch_recorder_uses_deterministic_document_id() -> None:
     recorder.client = client
     recorder.index = "tg-messages"
 
-    recorder.record(make_message("hello"), "in", matched_keyword=False)
+    asyncio.run(recorder.record(make_message("hello"), "in", matched_keyword=False))
 
     assert client.records[0]["index"] == "tg-messages"
     assert client.records[0]["id"] == "tg:123:789:in"
@@ -133,7 +133,7 @@ class CapturingOpenSearchClient:
     def __init__(self) -> None:
         self.records = []
 
-    def index(self, *, index: str, id: str, body: dict) -> None:
+    async def index(self, *, index: str, id: str, body: dict) -> None:
         self.records.append({"index": index, "id": id, "body": body})
 
 
