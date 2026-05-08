@@ -6,6 +6,7 @@ from dataclasses import dataclass
 class BotConfig:
     telegram_token: str
     trigger_keyword: str
+    openrouter_api_key: str
     opensearch_url: str
     opensearch_index: str
     opensearch_username: str | None
@@ -16,7 +17,12 @@ class BotConfig:
 def load_config() -> BotConfig:
     missing = [
         name
-        for name in ("TELEGRAM_BOT_TOKEN", "TG_TRIGGER_KEYWORD", "OPENSEARCH_URL")
+        for name in (
+            "TELEGRAM_BOT_TOKEN",
+            "TG_TRIGGER_KEYWORD",
+            "OPENROUTER_API_KEY",
+            "OPENSEARCH_URL",
+        )
         if not os.environ.get(name)
     ]
     if missing:
@@ -25,6 +31,7 @@ def load_config() -> BotConfig:
     return BotConfig(
         telegram_token=os.environ["TELEGRAM_BOT_TOKEN"],
         trigger_keyword=os.environ["TG_TRIGGER_KEYWORD"],
+        openrouter_api_key=os.environ["OPENROUTER_API_KEY"],
         opensearch_url=os.environ["OPENSEARCH_URL"],
         opensearch_index="messages",
         opensearch_username=os.environ.get("OPENSEARCH_USERNAME"),

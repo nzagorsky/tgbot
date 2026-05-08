@@ -547,6 +547,7 @@ name = "tgbot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "loguru" },
     { name = "opensearch-py", extra = ["async"] },
     { name = "python-telegram-bot" },
@@ -560,6 +561,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
     { name = "loguru", specifier = ">=0.7.0,<1.0.0" },
     { name = "opensearch-py", extras = ["async"], specifier = ">=3.0.0,<4.0.0" },
     { name = "python-telegram-bot", specifier = ">=22.0,<23.0" },

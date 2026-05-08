@@ -13,6 +13,7 @@ class ChatDeps:
     recorder: OpenSearchRecorder
     buffer: InMemoryChatBuffer
     trigger_keyword: str
+    openrouter_api_key: str
 
 
 async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -31,7 +32,13 @@ async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if (user and user.is_bot) or not matched_keyword:
         return
 
-    reply = await respond(text, await deps.buffer.recent(message.chat.id))
+    reply = await respond(
+        text,
+        await deps.buffer.recent(message.chat.id),
+        chat_id=message.chat.id,
+        recorder=deps.recorder,
+        openrouter_api_key=deps.openrouter_api_key,
+    )
     if reply is None:
         return
 

@@ -1,4 +1,5 @@
 from typing import Any
+from loguru import logger
 
 from opensearchpy import AsyncOpenSearch
 
@@ -26,4 +27,6 @@ async def search_chat_history(
             f"[{source.get('timestamp', '')}] "
             f"{source.get('username') or 'unknown'}: {source.get('text', '')}"
         )
+
+    logger.info("search_chat_history returned {} messages", len(messages))
     return "\n".join(messages)
