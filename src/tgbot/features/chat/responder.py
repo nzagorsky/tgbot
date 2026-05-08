@@ -1,4 +1,5 @@
 import hashlib
+from collections.abc import Callable
 from typing import Any
 
 from langchain.agents import create_agent as create_langchain_agent
@@ -17,6 +18,7 @@ from tgbot.features.chat.prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_VERSION, ren
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MAX_GRAPH_STEPS = 8
+ToolCallObserver = Callable[[str, dict[str, Any]], None]
 
 
 class SearchChatHistoryArgs(BaseModel):
@@ -28,21 +30,30 @@ class RandomNumberArgs(BaseModel):
     max: int = Field(100, description="Inclusive upper bound. Defaults to 100.")
 
 
-def available_tools(*, recorder: OpenSearchRecorder, chat_id: int) -> list[StructuredTool]:
+def available_tools(
+    *,
+    recorder: OpenSearchRecorder,
+    chat_id: int,
+    on_tool_call: ToolCallObserver | None = None,
+) -> list[StructuredTool]:
     async def search_chat_history(query: str) -> str:
+        if on_tool_call:
+            on_tool_call(SEARCH_CHAT_HISTORY_TOOL_NAME, {"query": query})
         return await run_search_chat_history_tool(
             {"query": query},
             {"recorder": recorder, "chat_id": chat_id},
         )
 
     async def random_number(min: int = 1, max: int = 100) -> str:
+        if on_tool_call:
+            on_tool_call(RANDOM_NUMBER_TOOL_NAME, {"min": min, "max": max})
         return await run_random_number_tool({"min": min, "max": max}, {})
 
     return [
         StructuredTool.from_function(
             coroutine=search_chat_history,
             name=SEARCH_CHAT_HISTORY_TOOL_NAME,
-            description="Search older messages in the current Telegram chat history.",
+            description="Search older messages not included in the recent chat context.",
             args_schema=SearchChatHistoryArgs,
         ),
         StructuredTool.from_function(
@@ -81,11 +92,13 @@ async def generate_reply(
     chat_id: int,
     recorder: OpenSearchRecorder,
     openrouter_api_key: str,
+    on_tool_call: ToolCallObserver | None = None,
 ) -> str | None:
     agent = create_agent(
         openrouter_api_key=openrouter_api_key,
         recorder=recorder,
         chat_id=chat_id,
+        on_tool_call=on_tool_call,
     )
     result = await agent.ainvoke(
         {"messages": [HumanMessage(content=render_user_prompt(text, recent_messages))]},
@@ -102,10 +115,16 @@ async def generate_reply(
     return final_content(result.get("messages", []))
 
 
-def create_agent(*, openrouter_api_key: str, recorder: OpenSearchRecorder, chat_id: int) -> Any:
+def create_agent(
+    *,
+    openrouter_api_key: str,
+    recorder: OpenSearchRecorder,
+    chat_id: int,
+    on_tool_call: ToolCallObserver | None = None,
+) -> Any:
     return create_langchain_agent(
         create_chat_model(openrouter_api_key),
-        available_tools(recorder=recorder, chat_id=chat_id),
+        available_tools(recorder=recorder, chat_id=chat_id, on_tool_call=on_tool_call),
         system_prompt=SYSTEM_PROMPT,
     )
 

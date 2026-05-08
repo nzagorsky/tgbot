@@ -31,7 +31,7 @@ SEARCH_CHAT_HISTORY_TOOL = Tool(
         "type": "function",
         "function": {
             "name": SEARCH_CHAT_HISTORY_TOOL_NAME,
-            "description": "Search older messages in the current Telegram chat history.",
+            "description": "Search older messages not included in the recent chat context.",
             "parameters": {
                 "type": "object",
                 "properties": {
