@@ -5,8 +5,14 @@ description = "Telegram group history bot"
 requires-python = ">=3.14.4"
 dependencies = [
     "httpx>=0.28.0,<1.0.0",
+    "langchain>=1.0.0,<2.0.0",
+    "langchain-core>=1.0.0,<2.0.0",
+    "langchain-openai>=1.0.0,<2.0.0",
+    "langgraph>=1.0.0,<2.0.0",
+    "langsmith>=0.4.0,<1.0.0",
     "loguru>=0.7.0,<1.0.0",
     "opensearch-py[async]>=3.0.0,<4.0.0",
+    "pydantic>=2.0.0,<3.0.0",
     "python-telegram-bot>=22.0,<23.0",
 ]
 
