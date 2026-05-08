@@ -14,6 +14,7 @@ def main() -> None:
     recorder = OpenSearchRecorder(
         url=config.opensearch_url,
         index=config.opensearch_index,
+        openrouter_api_key=config.openrouter_api_key,
         username=config.opensearch_username,
         password=config.opensearch_password,
         verify_certs=config.opensearch_verify_certs,
@@ -23,7 +24,7 @@ def main() -> None:
         token=config.telegram_token,
         chat_deps=ChatDeps(
             recorder=recorder,
-            buffer=InMemoryChatBuffer(),
+            buffer=InMemoryChatBuffer(limit=50),
             trigger_keyword=config.trigger_keyword,
             openrouter_api_key=config.openrouter_api_key,
         ),

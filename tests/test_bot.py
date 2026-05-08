@@ -17,7 +17,11 @@ from tgbot.features.chat.responder import (
     generate_reply,
     respond,
 )
-from tgbot.features.history.opensearch import OpenSearchRecorder
+from tgbot.features.history.opensearch import (
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+    OpenSearchRecorder,
+)
 from tgbot.features.history.search import search_chat_history
 from tgbot.features.history.tool import SEARCH_CHAT_HISTORY_TOOL, SEARCH_CHAT_HISTORY_TOOL_NAME
 from tgbot.features.random.tool import RANDOM_NUMBER_TOOL, RANDOM_NUMBER_TOOL_NAME
@@ -86,6 +90,18 @@ def test_available_tools_runs_search_history_tool() -> None:
     assert recorder.client.searches[0]["body"]["query"]["bool"]["must"] == [
         {"match": {"text": "deploy"}}
     ]
+    assert recorder.client.searches[1]["body"]["query"]["knn"]["text_embedding"] == {
+        "vector": [0.1, 0.2, 0.3],
+        "k": 30,
+        "filter": {
+            "bool": {
+                "filter": [
+                    {"term": {"chat_id": 123}},
+                    {"exists": {"field": "text_embedding"}},
+                ]
+            }
+        },
+    }
 
 
 def test_generate_reply_returns_none_for_empty_final_message(monkeypatch) -> None:
@@ -151,6 +167,27 @@ def test_run_tool_call_reports_empty_search_query() -> None:
     assert recorder.client.searches == []
 
 
+def test_run_tool_call_rejects_search_scope_arguments() -> None:
+    recorder = make_search_recorder()
+
+    result = asyncio.run(
+        run_tool_call(
+            {
+                "id": "call-1",
+                "function": {
+                    "name": "search_chat_history",
+                    "arguments": '{"query": "deploy", "chat_id": 999}',
+                },
+            },
+            tools=HISTORY_TOOLS,
+            context={"recorder": recorder, "chat_id": 123},
+        )
+    )
+
+    assert result["content"] == "Tool error: chat history scope is server-controlled: chat_id"
+    assert recorder.client.searches == []
+
+
 def test_run_tool_call_returns_random_number_in_range() -> None:
     result = asyncio.run(
         run_tool_call(
@@ -183,7 +220,11 @@ def test_run_tool_call_reports_invalid_random_number_range() -> None:
 
 
 def test_run_tool_call_reports_search_failure() -> None:
-    recorder = SimpleNamespace(client=FailingOpenSearchSearchClient(), index="tg-messages")
+    recorder = SimpleNamespace(
+        client=FailingOpenSearchSearchClient(),
+        index="tg-messages",
+        embed_query=FakeEmbeddings().aembed_query,
+    )
 
     result = asyncio.run(
         run_tool_call(
@@ -200,7 +241,11 @@ def test_run_tool_call_reports_search_failure() -> None:
 
 
 def test_run_tool_call_clamps_long_search_result() -> None:
-    recorder = SimpleNamespace(client=LongOpenSearchSearchClient(), index="tg-messages")
+    recorder = SimpleNamespace(
+        client=LongOpenSearchSearchClient(),
+        index="tg-messages",
+        embed_query=FakeEmbeddings().aembed_query,
+    )
 
     result = asyncio.run(
         run_tool_call(
@@ -222,12 +267,33 @@ def test_opensearch_recorder_uses_deterministic_document_id() -> None:
     recorder = OpenSearchRecorder.__new__(OpenSearchRecorder)
     recorder.client = client
     recorder.index = "tg-messages"
+    recorder.embedding_model = EMBEDDING_MODEL
+    recorder.embeddings = FakeEmbeddings()
 
     asyncio.run(recorder.record(make_message("hello")))
 
     assert client.records[0]["index"] == "tg-messages"
     assert client.records[0]["id"] == "tg:123:789"
     assert client.records[0]["body"]["text"] == "hello"
+    assert client.records[0]["body"]["embedding_model"] == EMBEDDING_MODEL
+    assert client.records[0]["body"]["text_embedding"] == [0.1, 0.2, 0.3]
+
+
+def test_opensearch_recorder_initializes_index_mapping() -> None:
+    client = CapturingOpenSearchClient(index_exists=False)
+    recorder = OpenSearchRecorder.__new__(OpenSearchRecorder)
+    recorder.client = client
+    recorder.index = "tg-messages"
+
+    asyncio.run(recorder.ensure_index())
+
+    assert client.created_indices[0]["index"] == "tg-messages"
+    assert client.created_indices[0]["body"]["settings"] == {"index": {"knn": True}}
+    assert client.created_indices[0]["body"]["mappings"]["properties"]["text_embedding"] == {
+        "type": "knn_vector",
+        "dimension": EMBEDDING_DIMENSIONS,
+        "method": {"name": "hnsw", "space_type": "cosinesimil", "engine": "lucene"},
+    }
 
 
 def test_listen_records_non_keyword_message_without_reply(monkeypatch) -> None:
@@ -247,7 +313,9 @@ def test_listen_records_non_keyword_message_without_reply(monkeypatch) -> None:
     asyncio.run(listen(update, context))
 
     assert [message.text for message in recorder.records] == ["just chatting"]
-    assert [message.text for message in asyncio.run(buffer.recent(message.chat.id))] == ["just chatting"]
+    assert [message.text for message in asyncio.run(buffer.recent(message.chat.id))] == [
+        "just chatting"
+    ]
     assert requests == []
     assert message.replies == []
 
@@ -359,6 +427,16 @@ def test_search_chat_history_filters_to_current_chat() -> None:
     assert result == "[2026-05-05T12:00:00+00:00] person: deploy notes"
 
 
+def test_search_chat_history_drops_unexpected_chat_hits() -> None:
+    client = CrossChatOpenSearchSearchClient()
+
+    result = asyncio.run(
+        search_chat_history(client, "tg-messages", chat_id=123, query="deploy", limit=3)
+    )
+
+    assert result == "[2026-05-05T12:00:00+00:00] person: current chat deploy notes"
+
+
 def make_context(
     recorder: CapturingRecorder,
     *,
@@ -379,7 +457,11 @@ def make_context(
 
 
 def make_search_recorder() -> SimpleNamespace:
-    return SimpleNamespace(client=CapturingOpenSearchSearchClient(), index="tg-messages")
+    return SimpleNamespace(
+        client=CapturingOpenSearchSearchClient(),
+        index="tg-messages",
+        embed_query=FakeEmbeddings().aembed_query,
+    )
 
 
 class CapturingOpenRouterClient:
@@ -427,11 +509,38 @@ class CapturingAgent:
 
 
 class CapturingOpenSearchClient:
-    def __init__(self) -> None:
+    def __init__(self, *, index_exists: bool = True) -> None:
         self.records = []
+        self.created_indices = []
+        self.updated_settings = []
+        self.updated_mappings = []
+        self.indices = CapturingOpenSearchIndices(self, index_exists=index_exists)
 
     async def index(self, *, index: str, id: str, body: dict) -> None:
         self.records.append({"index": index, "id": id, "body": body})
+
+
+class CapturingOpenSearchIndices:
+    def __init__(self, client: CapturingOpenSearchClient, *, index_exists: bool) -> None:
+        self.client = client
+        self.index_exists = index_exists
+
+    async def exists(self, *, index: str) -> bool:
+        return self.index_exists
+
+    async def create(self, *, index: str, body: dict) -> None:
+        self.client.created_indices.append({"index": index, "body": body})
+
+    async def put_settings(self, *, index: str, body: dict) -> None:
+        self.client.updated_settings.append({"index": index, "body": body})
+
+    async def put_mapping(self, *, index: str, body: dict) -> None:
+        self.client.updated_mappings.append({"index": index, "body": body})
+
+
+class FakeEmbeddings:
+    async def aembed_query(self, text: str) -> list[float]:
+        return [0.1, 0.2, 0.3]
 
 
 class CapturingOpenSearchSearchClient:
@@ -444,12 +553,45 @@ class CapturingOpenSearchSearchClient:
             "hits": {
                 "hits": [
                     {
+                        "_id": "tg:123:789",
+                        "_score": 1.0,
                         "_source": {
+                            "chat_id": 123,
                             "username": "person",
                             "text": "deploy notes",
                             "timestamp": "2026-05-05T12:00:00+00:00",
-                        }
+                        },
                     }
+                ]
+            }
+        }
+
+
+class CrossChatOpenSearchSearchClient:
+    async def search(self, *, index: str, body: dict) -> dict:
+        return {
+            "hits": {
+                "hits": [
+                    {
+                        "_id": "tg:999:1",
+                        "_score": 100.0,
+                        "_source": {
+                            "chat_id": 999,
+                            "username": "other",
+                            "text": "other chat private deploy notes",
+                            "timestamp": "2026-05-05T12:01:00+00:00",
+                        },
+                    },
+                    {
+                        "_id": "tg:123:1",
+                        "_score": 1.0,
+                        "_source": {
+                            "chat_id": 123,
+                            "username": "person",
+                            "text": "current chat deploy notes",
+                            "timestamp": "2026-05-05T12:00:00+00:00",
+                        },
+                    },
                 ]
             }
         }
@@ -467,6 +609,7 @@ class LongOpenSearchSearchClient:
                 "hits": [
                     {
                         "_source": {
+                            "chat_id": 123,
                             "username": "person",
                             "text": "x" * (MAX_TOOL_RESULT_CHARS + 100),
                             "timestamp": "2026-05-05T12:00:00+00:00",

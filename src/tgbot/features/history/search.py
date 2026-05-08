@@ -1,28 +1,47 @@
 from typing import Any
-from loguru import logger
 
+from loguru import logger
 from opensearchpy import AsyncOpenSearch
 
 
 async def search_chat_history(
-    client: AsyncOpenSearch, index: str, *, chat_id: int, query: str, limit: int = 10
+    client: AsyncOpenSearch,
+    index: str,
+    chat_id: int,
+    query_embedding: list[float] | None = None,
+    limit: int = 10,
 ) -> str:
-    response = await client.search(
+    vector_response = {"hits": {"hits": []}}
+
+    vector_response = await client.search(
         index=index,
         body={
             "size": limit,
             "query": {
-                "bool": {
-                    "filter": [{"term": {"chat_id": chat_id}}],
-                    "must": [{"match": {"text": query}}],
+                "knn": {
+                    "text_embedding": {
+                        "vector": query_embedding,
+                        "k": max(limit * 3, limit),
+                        "filter": {
+                            "bool": {
+                                "filter": [
+                                    {"term": {"chat_id": chat_id}},
+                                    {"exists": {"field": "text_embedding"}},
+                                ]
+                            }
+                        },
+                    }
                 }
             },
         },
     )
 
     messages = []
-    for hit in response["hits"]["hits"]:
+    for hit in ranked_hits(vector_response, limit=limit):
         source: dict[str, Any] = hit["_source"]
+        if source.get("chat_id") != chat_id:
+            logger.warning("Dropping search hit for unexpected chat_id={}", source.get("chat_id"))
+            continue
         messages.append(
             f"[{source.get('timestamp', '')}] "
             f"{source.get('username') or 'unknown'}: {source.get('text', '')}"
@@ -30,3 +49,26 @@ async def search_chat_history(
 
     logger.info("search_chat_history returned {} messages", len(messages))
     return "\n".join(messages)
+
+
+def ranked_hits(*responses: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    hits_by_id: dict[str, dict[str, Any]] = {}
+    scores_by_id: dict[str, float] = {}
+    for response in responses:
+        for hit in response.get("hits", {}).get("hits", []):
+            document_id = str(hit.get("_id") or hit.get("_source", {}).get("message_id") or id(hit))
+            hits_by_id.setdefault(document_id, hit)
+            scores_by_id[document_id] = scores_by_id.get(document_id, 0.0) + float(
+                hit.get("_score") or 0.0
+            )
+
+    return sorted(
+        hits_by_id.values(),
+        key=lambda hit: (
+            scores_by_id[
+                str(hit.get("_id") or hit.get("_source", {}).get("message_id") or id(hit))
+            ],
+            hit.get("_source", {}).get("timestamp", ""),
+        ),
+        reverse=True,
+    )[:limit]

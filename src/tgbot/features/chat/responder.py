@@ -53,7 +53,7 @@ def available_tools(
         StructuredTool.from_function(
             coroutine=search_chat_history,
             name=SEARCH_CHAT_HISTORY_TOOL_NAME,
-            description="Search older messages not included in the recent chat context.",
+            description="Semantically search older messages not included in the recent chat context.",
             args_schema=SearchChatHistoryArgs,
         ),
         StructuredTool.from_function(
@@ -63,6 +63,7 @@ def available_tools(
             args_schema=RandomNumberArgs,
         ),
     ]
+
 
 async def respond(
     text: str,
