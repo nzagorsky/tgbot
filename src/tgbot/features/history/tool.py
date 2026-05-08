@@ -2,6 +2,7 @@ from typing import Any
 
 from loguru import logger
 
+from tgbot.features.history.opensearch import OpenSearchRecorder
 from tgbot.features.history.search import search_chat_history
 from tgbot.llm.tools import Tool, ToolContext, ToolInputError
 
@@ -26,7 +27,7 @@ async def run_search_chat_history_tool(arguments: dict[str, Any], context: ToolC
     if not query:
         raise ToolInputError("empty search query")
 
-    recorder = context["recorder"]
+    recorder: OpenSearchRecorder = context["recorder"]
     chat_id = int(context["chat_id"])
     logger.info(f"Searching chat history, {chat_id=}, {query=}")
 

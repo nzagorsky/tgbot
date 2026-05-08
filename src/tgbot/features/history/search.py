@@ -13,6 +13,9 @@ async def search_chat_history(
 ) -> str:
     vector_response = {"hits": {"hits": []}}
 
+    if not query_embedding:
+        logger.info("Nothing found for query embedding")
+
     vector_response = await client.search(
         index=index,
         body={
