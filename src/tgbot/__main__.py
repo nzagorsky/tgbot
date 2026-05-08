@@ -2,6 +2,7 @@ from telegram import Update
 
 from tgbot.app import build_app
 from tgbot.config import load_config
+from tgbot.features.chat.buffer import InMemoryChatBuffer
 from tgbot.features.chat.handler import ChatDeps
 from tgbot.features.history.opensearch import OpenSearchRecorder
 from tgbot.logging import configure_logging
@@ -17,9 +18,16 @@ def main() -> None:
         password=config.opensearch_password,
         verify_certs=config.opensearch_verify_certs,
     )
-    build_app(config.telegram_token, ChatDeps(recorder, config.trigger_keyword)).run_polling(
-        allowed_updates=Update.ALL_TYPES
+
+    app = build_app(
+        token=config.telegram_token,
+        chat_deps=ChatDeps(
+            recorder=recorder,
+            buffer=InMemoryChatBuffer(),
+            trigger_keyword=config.trigger_keyword,
+        ),
     )
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":

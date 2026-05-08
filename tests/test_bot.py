@@ -5,16 +5,18 @@ from types import SimpleNamespace
 from telegram.ext import MessageHandler
 
 from tgbot.app import build_app
+from tgbot.features.chat.buffer import InMemoryChatBuffer
 from tgbot.features.chat.handler import ChatDeps, listen
-from tgbot.features.chat.responder import generate_reply
-from tgbot.features.history.opensearch import OpenSearchRecorder, build_message_document
+from tgbot.features.chat.responder import generate_reply, respond
+from tgbot.features.history.opensearch import OpenSearchRecorder
+from tgbot.features.history.search import search_chat_history
 
 
 TRIGGER_KEYWORD = "trigger-keyword"
 
 
 class FakeRecorder:
-    async def record(self, message, direction: str, *, matched_keyword: bool) -> None:
+    async def record(self, message) -> None:
         pass
 
 
@@ -22,12 +24,12 @@ class CapturingRecorder:
     def __init__(self) -> None:
         self.records = []
 
-    async def record(self, message, direction: str, *, matched_keyword: bool) -> None:
-        self.records.append((message, direction, matched_keyword))
+    async def record(self, message) -> None:
+        self.records.append(message)
 
 
 def test_build_app_registers_message_listener() -> None:
-    deps = ChatDeps(FakeRecorder(), TRIGGER_KEYWORD)
+    deps = ChatDeps(FakeRecorder(), InMemoryChatBuffer(), TRIGGER_KEYWORD)
     app = build_app("123:ABC", deps)
 
     assert any(isinstance(handler, MessageHandler) for handler in app.handlers[0])
@@ -35,37 +37,7 @@ def test_build_app_registers_message_listener() -> None:
 
 
 def test_generate_reply_returns_placeholder() -> None:
-    assert asyncio.run(generate_reply(f"{TRIGGER_KEYWORD}?")) == "This is generated"
-
-
-def test_build_message_document_for_inbound_message() -> None:
-    message = SimpleNamespace(
-        chat=SimpleNamespace(id=123, type="group", title="Chat"),
-        from_user=SimpleNamespace(id=456, username="person", first_name="Name"),
-        reply_to_message=SimpleNamespace(message_id=788),
-        message_id=789,
-        date=datetime(2026, 5, 5, 12, 0, tzinfo=timezone.utc),
-        text=f"{TRIGGER_KEYWORD} hello",
-        caption=None,
-    )
-
-    document = build_message_document(message, "in", matched_keyword=True)
-
-    assert document == {
-        "schema_version": 1,
-        "direction": "in",
-        "chat_id": 123,
-        "chat_type": "group",
-        "chat_title": "Chat",
-        "user_id": 456,
-        "username": "person",
-        "first_name": "Name",
-        "message_id": 789,
-        "reply_to_message_id": 788,
-        "timestamp": "2026-05-05T12:00:00+00:00",
-        "text": f"{TRIGGER_KEYWORD} hello",
-        "matched_keyword": True,
-    }
+    assert asyncio.run(generate_reply(f"{TRIGGER_KEYWORD}?", [])) == "This is generated"
 
 
 def test_opensearch_recorder_uses_deterministic_document_id() -> None:
@@ -74,57 +46,139 @@ def test_opensearch_recorder_uses_deterministic_document_id() -> None:
     recorder.client = client
     recorder.index = "tg-messages"
 
-    asyncio.run(recorder.record(make_message("hello"), "in", matched_keyword=False))
+    asyncio.run(recorder.record(make_message("hello")))
 
     assert client.records[0]["index"] == "tg-messages"
-    assert client.records[0]["id"] == "tg:123:789:in"
+    assert client.records[0]["id"] == "tg:123:789"
     assert client.records[0]["body"]["text"] == "hello"
 
 
-def test_listen_records_non_keyword_message_without_reply() -> None:
+def test_listen_records_non_keyword_message_without_reply(monkeypatch) -> None:
     recorder = CapturingRecorder()
+    buffer = InMemoryChatBuffer()
+    requests = []
     message = make_message("just chatting")
     update = SimpleNamespace(effective_message=message)
-    context = make_context(recorder)
+
+    async def capture_respond(text: str, recent_messages: list) -> str | None:
+        requests.append((text, recent_messages))
+        return "This is generated"
+
+    monkeypatch.setattr("tgbot.features.chat.handler.respond", capture_respond)
+    context = make_context(recorder, buffer=buffer)
 
     asyncio.run(listen(update, context))
 
-    assert [(direction, matched) for _, direction, matched in recorder.records] == [("in", False)]
+    assert [message.text for message in recorder.records] == ["just chatting"]
+    assert [message.text for message in asyncio.run(buffer.recent(message.chat.id))] == ["just chatting"]
+    assert requests == []
     assert message.replies == []
 
 
-def test_listen_records_bot_message_without_reply() -> None:
+def test_listen_records_bot_message_without_reply(monkeypatch) -> None:
     recorder = CapturingRecorder()
+    buffer = InMemoryChatBuffer()
+    requests = []
     message = make_message(f"{TRIGGER_KEYWORD} from another bot")
     message.from_user.is_bot = True
     update = SimpleNamespace(effective_message=message)
-    context = make_context(recorder)
+
+    async def capture_respond(text: str, recent_messages: list) -> str | None:
+        requests.append((text, recent_messages))
+        return "This is generated"
+
+    monkeypatch.setattr("tgbot.features.chat.handler.respond", capture_respond)
+    context = make_context(recorder, buffer=buffer)
 
     asyncio.run(listen(update, context))
 
-    assert [(direction, matched) for _, direction, matched in recorder.records] == [("in", True)]
+    assert [message.text for message in recorder.records] == [f"{TRIGGER_KEYWORD} from another bot"]
+    assert [message.text for message in asyncio.run(buffer.recent(message.chat.id))] == [
+        f"{TRIGGER_KEYWORD} from another bot"
+    ]
+    assert requests == []
     assert message.replies == []
 
 
-def test_listen_records_inbound_and_outbound_for_keyword_message() -> None:
+def test_listen_records_inbound_and_outbound_for_keyword_message(monkeypatch) -> None:
     recorder = CapturingRecorder()
+    buffer = InMemoryChatBuffer()
+    requests = []
     message = make_message(f"{TRIGGER_KEYWORD} ping")
     update = SimpleNamespace(effective_message=message)
-    context = make_context(recorder)
+
+    async def capture_respond(text: str, recent_messages: list) -> str | None:
+        requests.append((text, recent_messages))
+        return "This is generated"
+
+    monkeypatch.setattr("tgbot.features.chat.handler.respond", capture_respond)
+    context = make_context(recorder, buffer=buffer)
 
     asyncio.run(listen(update, context))
 
-    assert [(direction, matched) for _, direction, matched in recorder.records] == [
-        ("in", True),
-        ("out", True),
+    assert [message.text for message in recorder.records] == [
+        f"{TRIGGER_KEYWORD} ping",
+        "This is generated",
+    ]
+    assert requests[0][0] == f"{TRIGGER_KEYWORD} ping"
+    assert [message.text for message in requests[0][1]] == [f"{TRIGGER_KEYWORD} ping"]
+    assert [message.text for message in asyncio.run(buffer.recent(message.chat.id))] == [
+        f"{TRIGGER_KEYWORD} ping",
+        "This is generated",
     ]
     assert message.replies == ["This is generated"]
 
 
-def make_context(recorder: CapturingRecorder) -> SimpleNamespace:
+def test_listen_ignores_update_without_message() -> None:
+    recorder = CapturingRecorder()
+    update = SimpleNamespace(effective_message=None)
+    context = make_context(recorder)
+
+    asyncio.run(listen(update, context))
+
+    assert recorder.records == []
+
+
+def test_respond_keeps_current_placeholder_reply() -> None:
+    reply = asyncio.run(respond(f"{TRIGGER_KEYWORD}?", []))
+
+    assert reply == "This is generated"
+
+
+def test_search_chat_history_filters_to_current_chat() -> None:
+    client = CapturingOpenSearchSearchClient()
+
+    result = asyncio.run(
+        search_chat_history(client, "tg-messages", chat_id=123, query="deploy", limit=3)
+    )
+
+    assert client.searches == [
+        {
+            "index": "tg-messages",
+            "body": {
+                "size": 3,
+                "query": {
+                    "bool": {
+                        "filter": [{"term": {"chat_id": 123}}],
+                        "must": [{"match": {"text": "deploy"}}],
+                    }
+                },
+            },
+        }
+    ]
+    assert result == "[2026-05-05T12:00:00+00:00] person: deploy notes"
+
+
+def make_context(
+    recorder: CapturingRecorder,
+    *,
+    buffer: InMemoryChatBuffer | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         application=SimpleNamespace(
-            bot_data={"chat_deps": ChatDeps(recorder, TRIGGER_KEYWORD)},
+            bot_data={
+                "chat_deps": ChatDeps(recorder, buffer or InMemoryChatBuffer(), TRIGGER_KEYWORD)
+            },
         )
     )
 
@@ -135,6 +189,27 @@ class CapturingOpenSearchClient:
 
     async def index(self, *, index: str, id: str, body: dict) -> None:
         self.records.append({"index": index, "id": id, "body": body})
+
+
+class CapturingOpenSearchSearchClient:
+    def __init__(self) -> None:
+        self.searches = []
+
+    async def search(self, *, index: str, body: dict) -> dict:
+        self.searches.append({"index": index, "body": body})
+        return {
+            "hits": {
+                "hits": [
+                    {
+                        "_source": {
+                            "username": "person",
+                            "text": "deploy notes",
+                            "timestamp": "2026-05-05T12:00:00+00:00",
+                        }
+                    }
+                ]
+            }
+        }
 
 
 def make_message(text: str) -> SimpleNamespace:

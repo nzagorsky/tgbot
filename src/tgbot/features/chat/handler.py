@@ -1,24 +1,22 @@
 from dataclasses import dataclass
-from typing import Any, Protocol
 
-from telegram import Update
+from telegram import Message, Update
 from telegram.ext import ContextTypes
 
-from tgbot.features.chat.responder import generate_reply
-
-
-class MessageRecorder(Protocol):
-    async def record(self, message: Any, direction: str, *, matched_keyword: bool) -> None: ...
+from tgbot.features.chat.buffer import InMemoryChatBuffer
+from tgbot.features.chat.responder import respond
+from tgbot.features.history.opensearch import OpenSearchRecorder
 
 
 @dataclass(frozen=True)
 class ChatDeps:
-    recorder: MessageRecorder
+    recorder: OpenSearchRecorder
+    buffer: InMemoryChatBuffer
     trigger_keyword: str
 
 
 async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.effective_message
+    message: Message | None = update.effective_message
     if message is None:
         return
 
@@ -26,11 +24,17 @@ async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = message.text or message.caption or ""
     matched_keyword = deps.trigger_keyword.casefold() in text.casefold()
 
-    await deps.recorder.record(message, "in", matched_keyword=matched_keyword)
+    await deps.recorder.record(message)
+    await deps.buffer.append(message)
 
     user = message.from_user
     if (user and user.is_bot) or not matched_keyword:
         return
 
-    sent_message = await message.reply_text(await generate_reply(text))
-    await deps.recorder.record(sent_message, "out", matched_keyword=True)
+    reply = await respond(text, await deps.buffer.recent(message.chat.id))
+    if reply is None:
+        return
+
+    sent_message: Message = await message.reply_text(reply)
+    await deps.recorder.record(sent_message)
+    await deps.buffer.append(sent_message)
