@@ -12,12 +12,14 @@ from tgbot.features.chat.responder import OPENROUTER_MODEL, generate_reply, resp
 from tgbot.features.history.opensearch import OpenSearchRecorder
 from tgbot.features.history.search import search_chat_history
 from tgbot.features.history.tool import SEARCH_CHAT_HISTORY_TOOL, SEARCH_CHAT_HISTORY_TOOL_NAME
+from tgbot.features.random.tool import RANDOM_NUMBER_TOOL, RANDOM_NUMBER_TOOL_NAME
 from tgbot.llm.tools import MAX_TOOL_RESULT_CHARS, run_tool_call
 
 
 TRIGGER_KEYWORD = "trigger-keyword"
 OPENROUTER_API_KEY = "openrouter-key"
 HISTORY_TOOLS = {SEARCH_CHAT_HISTORY_TOOL_NAME: SEARCH_CHAT_HISTORY_TOOL}
+RANDOM_TOOLS = {RANDOM_NUMBER_TOOL_NAME: RANDOM_NUMBER_TOOL}
 
 
 class FakeRecorder:
@@ -72,6 +74,10 @@ def test_generate_reply_returns_openrouter_message(monkeypatch) -> None:
     assert client.posts[0]["headers"]["Authorization"] == f"Bearer {OPENROUTER_API_KEY}"
     assert client.posts[0]["json"]["model"] == OPENROUTER_MODEL
     assert "recent context" in client.posts[0]["json"]["messages"][1]["content"]
+    assert [tool["function"]["name"] for tool in client.posts[0]["json"]["tools"]] == [
+        "search_chat_history",
+        "random_number",
+    ]
 
 
 def test_generate_reply_runs_search_history_tool(monkeypatch) -> None:
@@ -185,6 +191,56 @@ def test_generate_reply_continues_after_bad_tool_arguments(monkeypatch) -> None:
     }
 
 
+def test_generate_reply_runs_random_number_tool(monkeypatch) -> None:
+    client = CapturingOpenRouterClient(
+        [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "random_number",
+                                        "arguments": '{"min": 1, "max": 10000000}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {"message": {"role": "assistant", "content": "Here is a random number."}}
+                ]
+            },
+        ]
+    )
+    monkeypatch.setattr("tgbot.features.chat.responder.httpx.AsyncClient", client.factory)
+
+    reply = asyncio.run(
+        generate_reply(
+            f"{TRIGGER_KEYWORD} give me random number between 1 and 10000000",
+            [],
+            chat_id=123,
+            recorder=make_search_recorder(),
+            openrouter_api_key=OPENROUTER_API_KEY,
+        )
+    )
+
+    tool_message = client.posts[1]["json"]["messages"][-1]
+    assert reply == "Here is a random number."
+    assert tool_message["role"] == "tool"
+    assert tool_message["tool_call_id"] == "call-1"
+    assert tool_message["name"] == "random_number"
+    assert 1 <= int(tool_message["content"]) <= 10000000
+
+
 def test_run_tool_call_reports_unsupported_tool() -> None:
     result = asyncio.run(
         run_tool_call(
@@ -221,6 +277,37 @@ def test_run_tool_call_reports_empty_search_query() -> None:
 
     assert result["content"] == "Tool error: empty search query"
     assert recorder.client.searches == []
+
+
+def test_run_tool_call_returns_random_number_in_range() -> None:
+    result = asyncio.run(
+        run_tool_call(
+            {
+                "id": "call-1",
+                "function": {"name": "random_number", "arguments": '{"min": 1, "max": 10000000}'},
+            },
+            tools=RANDOM_TOOLS,
+            context={},
+        )
+    )
+
+    assert result["name"] == "random_number"
+    assert 1 <= int(result["content"]) <= 10000000
+
+
+def test_run_tool_call_reports_invalid_random_number_range() -> None:
+    result = asyncio.run(
+        run_tool_call(
+            {
+                "id": "call-1",
+                "function": {"name": "random_number", "arguments": '{"min": 10, "max": 1}'},
+            },
+            tools=RANDOM_TOOLS,
+            context={},
+        )
+    )
+
+    assert result["content"] == "Tool error: min cannot be greater than max"
 
 
 def test_run_tool_call_reports_search_failure() -> None:

@@ -19,6 +19,6 @@ def configure_logging() -> None:
     logger.add(
         sys.stderr,
         level="INFO",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} {level} {name}: {message}",
     )
     logging.basicConfig(handlers=[InterceptHandler()], level=logging.INFO, force=True)
+    logging.getLogger("httpx").setLevel(logging.WARNING)

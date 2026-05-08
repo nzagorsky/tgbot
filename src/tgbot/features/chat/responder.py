@@ -6,6 +6,7 @@ from telegram import Message
 
 from tgbot.features.history.opensearch import OpenSearchRecorder
 from tgbot.features.history.tool import SEARCH_CHAT_HISTORY_TOOL, SEARCH_CHAT_HISTORY_TOOL_NAME
+from tgbot.features.random.tool import RANDOM_NUMBER_TOOL, RANDOM_NUMBER_TOOL_NAME
 from tgbot.llm.tools import run_tool_calls
 
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
@@ -15,11 +16,15 @@ MAX_TOOL_CALLS = 3
 SYSTEM_PROMPT = """You are a Telegram group chat bot.
 Reply naturally and briefly.
 Use search_chat_history when older chat context would help.
+Use random_number when the user asks for a random number.
 Do not claim you searched unless you used the tool.
 If context is insufficient, ask one short clarifying question.
 Do not use Markdown unless it makes the reply clearer."""
 
-AVAILABLE_TOOLS = {SEARCH_CHAT_HISTORY_TOOL_NAME: SEARCH_CHAT_HISTORY_TOOL}
+AVAILABLE_TOOLS = {
+    SEARCH_CHAT_HISTORY_TOOL_NAME: SEARCH_CHAT_HISTORY_TOOL,
+    RANDOM_NUMBER_TOOL_NAME: RANDOM_NUMBER_TOOL,
+}
 
 async def respond(
     text: str,
