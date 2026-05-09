@@ -2,18 +2,12 @@ from telegram import Message
 
 SYSTEM_PROMPT_VERSION = "chat-system-v2"
 
-SYSTEM_PROMPT = """You are a Telegram group chat bot.
-Reply naturally and briefly.
-Reply in the same language as the user's latest message. If languages are mixed, use the predominant language.
-Use recent chat messages first.
+SYSTEM_PROMPT = """
+You are a Telegram group chat bot.
+Reply naturally and briefly. Reply in the same language as the user's latest message. If languages are mixed, use the predominant language. Use recent chat messages first.
 
-Always use `search_chat_history` to get a better context of what user is asking about. Do not claim you searched unless you used the `search_chat_history` tool.
-
-Use random_number when the user asks for a random number.
-
-If context is insufficient, ask one short clarifying question.
-Do not translate unless asked.
-Do not use Markdown unless it makes the reply clearer."""
+Always use search tool to get a better context of the conversation.
+"""
 
 
 def render_user_prompt(text: str, recent_messages: list[Message]) -> str:
