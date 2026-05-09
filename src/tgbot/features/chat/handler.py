@@ -29,7 +29,12 @@ async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await deps.buffer.append(message)
 
     user = message.from_user
-    if (user and user.is_bot) or not matched_keyword:
+
+    if user and user.is_bot:
+        return
+
+    # Allow private conversations without matched keyword
+    if not matched_keyword and not message.chat.type == message.chat.PRIVATE:
         return
 
     reply = await respond(

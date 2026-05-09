@@ -5,7 +5,7 @@ from loguru import logger
 from telegram import Message
 
 from tgbot.features.history.opensearch import OpenSearchRecorder
-from tgbot.features.history.tool import search_chat_history_tool
+from tgbot.features.history.tool import UserContext, search_chat_history_tool
 from tgbot.features.chat.prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_VERSION, render_user_prompt
 
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
@@ -16,24 +16,10 @@ MAX_GRAPH_STEPS = 8
 async def respond(
     text: str,
     recent_messages: list[Message],
-    *,
     chat_id: int,
     recorder: OpenSearchRecorder,
     openrouter_api_key: str,
 ) -> str | None:
-
-    async def run_search_chat_history_tool(query: str):
-        """
-        Search Telegram chat history for relevant context.
-
-        Use this when the user asks about something that may have been discussed earlier.
-        If the user asks multiple independent questions, call this separately for each question
-        or use a query that targets the specific question being answered.
-
-        Args:
-            query: Short search query for chat history.
-        """
-        return await search_chat_history_tool(recorder=recorder, chat_id=chat_id, query=query)
 
     try:
         chat_model = ChatOpenAI(
@@ -49,9 +35,10 @@ async def respond(
         agent = create_langchain_agent(
             chat_model,
             tools=[
-                run_search_chat_history_tool,
+                search_chat_history_tool,
             ],
             system_prompt=SYSTEM_PROMPT,
+            context_schema=UserContext,
         )
         result = await agent.ainvoke(
             {"messages": [HumanMessage(content=render_user_prompt(text, recent_messages))]},
@@ -63,6 +50,7 @@ async def respond(
                 },
                 "tags": ["telegram", "chat-reply", SYSTEM_PROMPT_VERSION],
             },
+            context=UserContext(chat_id=chat_id, recorder=recorder),
         )
         messages = result.get("messages", [])
 
