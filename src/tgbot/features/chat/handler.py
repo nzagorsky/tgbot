@@ -14,6 +14,7 @@ class ChatDeps:
     buffer: InMemoryChatBuffer
     trigger_keyword: str
     openrouter_api_key: str
+    searxng_url: str
 
 
 async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -43,6 +44,7 @@ async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id=message.chat.id,
         recorder=deps.recorder,
         openrouter_api_key=deps.openrouter_api_key,
+        searxng_url=deps.searxng_url,
     )
     if reply is None:
         return

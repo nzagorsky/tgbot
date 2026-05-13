@@ -1,12 +1,18 @@
 from telegram import Message
 
+from tgbot.config import load_config
+
+config = load_config()
+
 SYSTEM_PROMPT_VERSION = "chat-system-v2"
 
-SYSTEM_PROMPT = """
-You are a Telegram group chat bot.
-Reply naturally and briefly. Reply in the same language as the user's latest message. If languages are mixed, use the predominant language. Use recent chat messages first.
+SYSTEM_PROMPT = f"""
+You are a Telegram group chat bot. Your name is {config.trigger_keyword}
+Reply naturally and briefly. Always reply. Never complain.
+Reply in the same language as the user's latest message. If languages are mixed, use the predominant language. Use recent chat messages first.
 
-Always use search tool to get a better context of the conversation.
+Always use chat history search to get a better context of the conversation.
+Use web search for current events, external facts, or anything that may have changed recently.
 """
 
 

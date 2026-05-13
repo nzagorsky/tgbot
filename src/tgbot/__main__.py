@@ -27,6 +27,7 @@ def main() -> None:
             buffer=InMemoryChatBuffer(limit=50),
             trigger_keyword=config.trigger_keyword,
             openrouter_api_key=config.openrouter_api_key,
+            searxng_url=config.searxng_url,
         ),
     )
     app.run_polling(allowed_updates=Update.ALL_TYPES)

@@ -1,4 +1,6 @@
 from langchain.agents import create_agent as create_langchain_agent
+from langchain_community.tools import SearxSearchResults
+from langchain_community.utilities import SearxSearchWrapper
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -19,6 +21,7 @@ async def respond(
     chat_id: int,
     recorder: OpenSearchRecorder,
     openrouter_api_key: str,
+    searxng_url: str,
 ) -> str | None:
 
     try:
@@ -36,6 +39,14 @@ async def respond(
             chat_model,
             tools=[
                 search_chat_history_tool,
+                SearxSearchResults(
+                    wrapper=SearxSearchWrapper(
+                        searx_host=searxng_url,
+                        k=5,
+                        params={"language": "all"},
+                    ),
+                    num_results=5,
+                ),
             ],
             system_prompt=SYSTEM_PROMPT,
             context_schema=UserContext,
