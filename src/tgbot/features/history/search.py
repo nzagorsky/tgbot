@@ -39,8 +39,26 @@ async def search_chat_history(
         },
     )
 
+    hits_by_id: dict[str, dict[str, Any]] = {}
+    scores_by_id: dict[str, float] = {}
+    for hit in vector_response.get("hits", {}).get("hits", []):
+        document_id = str(hit.get("_id") or hit.get("_source", {}).get("message_id") or id(hit))
+        hits_by_id.setdefault(document_id, hit)
+        scores_by_id[document_id] = scores_by_id.get(document_id, 0.0) + float(
+            hit.get("_score") or 0.0
+        )
+
     messages = []
-    for hit in ranked_hits(vector_response, limit=limit):
+    for hit in sorted(
+        hits_by_id.values(),
+        key=lambda hit: (
+            scores_by_id[
+                str(hit.get("_id") or hit.get("_source", {}).get("message_id") or id(hit))
+            ],
+            hit.get("_source", {}).get("timestamp", ""),
+        ),
+        reverse=True,
+    )[:limit]:
         source: dict[str, Any] = hit["_source"]
         if source.get("chat_id") != chat_id:
             logger.warning("Dropping search hit for unexpected chat_id={}", source.get("chat_id"))
@@ -52,26 +70,3 @@ async def search_chat_history(
 
     logger.info("search_chat_history returned {} messages", len(messages))
     return "\n".join(messages)
-
-
-def ranked_hits(*responses: dict[str, Any], limit: int) -> list[dict[str, Any]]:
-    hits_by_id: dict[str, dict[str, Any]] = {}
-    scores_by_id: dict[str, float] = {}
-    for response in responses:
-        for hit in response.get("hits", {}).get("hits", []):
-            document_id = str(hit.get("_id") or hit.get("_source", {}).get("message_id") or id(hit))
-            hits_by_id.setdefault(document_id, hit)
-            scores_by_id[document_id] = scores_by_id.get(document_id, 0.0) + float(
-                hit.get("_score") or 0.0
-            )
-
-    return sorted(
-        hits_by_id.values(),
-        key=lambda hit: (
-            scores_by_id[
-                str(hit.get("_id") or hit.get("_source", {}).get("message_id") or id(hit))
-            ],
-            hit.get("_source", {}).get("timestamp", ""),
-        ),
-        reverse=True,
-    )[:limit]
