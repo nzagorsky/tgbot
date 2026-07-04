@@ -6,10 +6,11 @@ from loguru import logger
 from opensearchpy import AsyncOpenSearch
 from telegram import Message
 
+from tgbot.features.history.mapping import EMBEDDING_DIMENSIONS, message_mapping
+
 SCHEMA_VERSION = 2
 EMBEDDING_BASE_URL = "https://openrouter.ai/api/v1"
 EMBEDDING_MODEL = "openai/text-embedding-3-small"
-EMBEDDING_DIMENSIONS = 1536
 
 
 class OpenSearchRecorder:
@@ -107,32 +108,3 @@ class OpenSearchRecorder:
 
     async def embed_query(self, text: str) -> list[float]:
         return await self.embeddings.aembed_query(text)
-
-
-def message_mapping() -> dict[str, Any]:
-    return {
-        "dynamic": "strict",
-        "properties": {
-            "schema_version": {"type": "integer"},
-            "chat_id": {"type": "long"},
-            "chat_type": {"type": "keyword"},
-            "chat_title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-            "user_id": {"type": "long"},
-            "username": {"type": "keyword"},
-            "first_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-            "message_id": {"type": "long"},
-            "reply_to_message_id": {"type": "long"},
-            "timestamp": {"type": "date"},
-            "text": {"type": "text"},
-            "embedding_model": {"type": "keyword"},
-            "text_embedding": {
-                "type": "knn_vector",
-                "dimension": EMBEDDING_DIMENSIONS,
-                "method": {
-                    "name": "hnsw",
-                    "space_type": "cosinesimil",
-                    "engine": "lucene",
-                },
-            },
-        },
-    }

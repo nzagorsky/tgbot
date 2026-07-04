@@ -1,4 +1,4 @@
-- The repo is public, make sure to not include any sensitive information
-- All code should be asynchronous
+- The repo is public, do not include anything sensitive
+- Code must be asynchronous
 - Bot must support multiple languages
-- Vertical slice architecture is used.
+- Use Vertical slice architecture
