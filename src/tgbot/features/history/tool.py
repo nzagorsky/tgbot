@@ -1,15 +1,8 @@
 from langchain.tools import ToolRuntime, tool
 from loguru import logger
-from dataclasses import dataclass
 
-from tgbot.features.history.opensearch import OpenSearchRecorder
 from tgbot.features.history.search import search_chat_history
-
-
-@dataclass
-class UserContext:
-    chat_id: int
-    recorder: OpenSearchRecorder
+from tgbot.features.history.types import UserContext
 
 
 @tool

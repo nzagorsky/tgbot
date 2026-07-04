@@ -6,9 +6,10 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 from telegram import Message
 
-from tgbot.features.history.opensearch import OpenSearchRecorder
-from tgbot.features.history.tool import UserContext, search_chat_history_tool
 from tgbot.features.chat.prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_VERSION, render_user_prompt
+from tgbot.features.history.opensearch import OpenSearchRecorder
+from tgbot.features.history.tool import search_chat_history_tool
+from tgbot.features.history.types import UserContext
 
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"

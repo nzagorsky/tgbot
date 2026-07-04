@@ -1,20 +1,8 @@
-from dataclasses import dataclass
-
 from telegram import Message, Update
 from telegram.ext import ContextTypes
 
-from tgbot.features.chat.buffer import InMemoryChatBuffer
 from tgbot.features.chat.responder import respond
-from tgbot.features.history.opensearch import OpenSearchRecorder
-
-
-@dataclass(frozen=True)
-class ChatDeps:
-    recorder: OpenSearchRecorder
-    buffer: InMemoryChatBuffer
-    trigger_keyword: str
-    openrouter_api_key: str
-    searxng_url: str
+from tgbot.features.chat.types import ChatDeps
 
 
 async def listen(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -1,6 +1,7 @@
 from telegram.ext import Application, MessageHandler, filters
 
-from tgbot.features.chat.handler import ChatDeps, listen
+from tgbot.features.chat.handler import listen
+from tgbot.features.chat.types import ChatDeps
 
 
 def build_app(token: str, chat_deps: ChatDeps) -> Application:
