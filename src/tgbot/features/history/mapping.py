@@ -1,10 +1,7 @@
-from typing import Any
-
-
 EMBEDDING_DIMENSIONS = 1536
 
 
-def message_mapping() -> dict[str, Any]:
+def message_mapping() -> dict[str, dict[str, dict] | str]:
     return {
         "dynamic": "strict",
         "properties": {
